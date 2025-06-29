@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
-from datetime import date
+from datetime import date, timedelta
 
 # --- 기준 테이블 ---
 QUEST_DRAIN = {5: 1500, 9: 1700, 13: 2886}
@@ -16,30 +16,36 @@ BOSS_TABLE = {
 }
 
 st.set_page_config(page_title="메이플 주차별 흔적 계산기", layout="wide")
-st.title("메이플스토리 주차별 흔적 계산기")
+st.title("메이플스토리 2025 주차별 흔적 계산기")
 
 # --- 사용자 입력 ---
 col1, col2, col3 = st.columns(3)
 with col1:
     nickname = st.text_input("닉네임")
 with col2:
-    start_date = st.date_input("시작일자", value=date.today())
-with col3:
     init_trace = st.number_input("기록시점-현재흔적", min_value=0, value=0)
+with col3:
+    pass_state = st.radio("제네시스 패스 상태", options=["X","ㅁ","O"], horizontal=True)
 
-# 제네시스 패스 상태 선택
-st.subheader("제네시스 패스 활성화 여부")
-pass_state = st.radio("패스 상태", options=["X","ㅁ","O"], horizontal=True)
-mult = 3 if pass_state == "O" else 1 if pass_state == "ㅁ" else 0
+# 배율 결정
+mult_map = {"X": 0, "ㅁ": 1, "O": 3}
 
 # --- 주차별 입력 그리드 ---
-st.subheader("주차별 보스 클리어 상태 입력 (O=패스 활성×3, ㅁ=패스 비활성×1, X=미클리어)")
+st.subheader("주차별 보스 클리어 상태 입력 (O=3배, ㅁ=1배, X=0)")
 weeks = list(range(0,14))
 data = []
+# 2025년 6월 17일 기준
+base_date = date(2025, 6, 17)
 for w in weeks:
+    # 기간 계산
+    if w == 0:
+        start = base_date
+        end = base_date + timedelta(days=1)
+    else:
+        start = base_date + timedelta(days=2 + 7*(w-1))
+        end = start + timedelta(days=6)
     cols = st.columns(len(BOSS_TABLE) + 2)
-    cols[0].write(f"{w}주차")
-    cols[1].write((start_date + pd.Timedelta(weeks=w)).strftime('%m월 %d일'))
+    cols[0].write(f"{w}주차 {start.strftime('%m.%d')}~{end.strftime('%m.%d')}")
     row = {"week": w}
     for idx, boss in enumerate(BOSS_TABLE, start=2):
         choice = cols[idx].selectbox(
@@ -57,20 +63,14 @@ acc_trace = init_trace
 for _, row in df.iterrows():
     w = row.week
     # 보스 흔적 합계
-    boss_sum = 0
-    for boss, base in BOSS_TABLE.items():
-        state = row[boss]
-        if state == "O":
-            boss_sum += base * 3
-        elif state == "ㅁ":
-            boss_sum += base * 1
+    boss_sum = sum(BOSS_TABLE[boss] * mult_map[row[boss]] for boss in BOSS_TABLE)
     # 해방퀘스트 소모량
     drain = QUEST_DRAIN.get(w, 0)
     # 순 증가량
     delta = boss_sum - drain
     acc_trace += delta
     results.append({
-        "주차": w,
+        "주차": f"{w}주차",
         "보스합계": boss_sum,
         "소모량": drain,
         "순증가량": delta,
