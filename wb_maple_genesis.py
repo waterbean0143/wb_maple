@@ -27,14 +27,15 @@ with col2:
 # 제네시스 패스 구매일자 입력
 purchase_date = st.date_input("제네시스 패스 구매일자", value=date(2025,6,17))
 
+# Summary placeholder
+summary_placeholder = st.empty()
+
 # --- 주차별 입력 그리드 ---
 st.subheader("주차별 보스 클리어 상태 입력 (O=클리어, X=미클리어)")
 weeks = list(range(0,14))
 data = []
-# 2025년 6월 17일 기준
 base_date = date(2025, 6, 17)
 for w in weeks:
-    # 기간 계산
     if w == 0:
         start = base_date
         end = base_date + timedelta(days=1)
@@ -54,44 +55,44 @@ for w in weeks:
 
 df = pd.DataFrame(data)
 
-# --- 계산 로직 ---
-results = []
-acc_trace = init_trace
-for _, row in df.iterrows():
-    w = row.week
-    kill_date = row.start
-    # 보스 흔적 합계
-    boss_sum = 0
-    for boss, base in BOSS_TABLE.items():
-        if row[boss] == "O":
-            mult = 3 if kill_date >= purchase_date else 1
-            boss_sum += base * mult
-    # 해방퀘스트 소모량
-    drain = QUEST_DRAIN.get(w, 0)
-    # 순 증가량
-    delta = boss_sum - drain
-    acc_trace += delta
-    results.append({
-        "주차": f"{w}주차",
-        "보스합계": boss_sum,
-        "소모량": drain,
-        "순증가량": delta,
-        "누적흔적": acc_trace
-    })
-
-res_df = pd.DataFrame(results)
-
-# --- 결과 출력 ---
-st.subheader("계산 결과")
-st.dataframe(res_df.set_index('주차'))
-
-# --- 부족/추가 진힐라 ---
-st.subheader("목표 대비 부족량 및 추가 진힐라 필요 횟수")
-TARGET = 6600
-final_acc = acc_trace
-lack = max(0, TARGET - final_acc)
-need_jin = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack > 0 else 0
-colx, coly = st.columns(2)
-colx.metric("최종 누적 흔적", final_acc)
-coly.metric("부족 흔적량", lack)
-st.metric("추가 진힐라 필요 횟수", need_jin)
+# 계산 버튼
+if st.button("계산"):
+    results = []
+    acc_trace = init_trace
+    total_aug = 0
+    # calculate per week
+    for _, row in df.iterrows():
+        w = row.week
+        kill_date = row.start
+        boss_sum = 0
+        for boss, base in BOSS_TABLE.items():
+            if row[boss] == "O":
+                mult = 3 if kill_date >= purchase_date else 1
+                boss_sum += base * mult
+        drain = QUEST_DRAIN.get(w, 0)
+        delta = boss_sum - drain
+        acc_trace += delta
+        total_aug += delta
+        results.append({
+            "주차": f"{w}주차",
+            "보스합계": boss_sum,
+            "소모량": drain,
+            "순증가량": delta,
+            "누적흔적": acc_trace
+        })
+    res_df = pd.DataFrame(results).set_index('주차')
+    # Summary metrics
+    summary_placeholder.metric(label="총 흔적증강", value=int(total_aug))
+    summary_placeholder.metric(label="현재 흔적 (증가 후)", value=int(init_trace + total_aug))
+    summary_placeholder.metric(label="누적 흔적", value=int(init_trace + total_aug))
+    # show table
+    st.subheader("계산 결과")
+    st.dataframe(res_df)
+    # 부족/추가 진힐라
+    TARGET = 6600
+    final_acc = init_trace + total_aug
+    lack = max(0, TARGET - final_acc)
+    need_jin = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack > 0 else 0
+    colx, coly = st.columns(2)
+    colx.metric("부족 흔적량", lack)
+    coly.metric("추가 진힐라 필요 횟수", need_jin)
