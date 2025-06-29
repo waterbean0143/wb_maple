@@ -19,19 +19,16 @@ st.set_page_config(page_title="메이플 주차별 흔적 계산기", layout="wi
 st.title("메이플스토리 2025 주차별 흔적 계산기")
 
 # --- 사용자 입력 ---
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     nickname = st.text_input("닉네임")
 with col2:
     init_trace = st.number_input("기록시점-현재흔적", min_value=0, value=0)
-with col3:
-    pass_state = st.radio("제네시스 패스 상태", options=["X","ㅁ","O"], horizontal=True)
-
-# 배율 결정
-mult_map = {"X": 0, "ㅁ": 1, "O": 3}
+# 제네시스 패스 구매일자 입력
+purchase_date = st.date_input("제네시스 패스 구매일자", value=date(2025,6,17))
 
 # --- 주차별 입력 그리드 ---
-st.subheader("주차별 보스 클리어 상태 입력 (O=3배, ㅁ=1배, X=0)")
+st.subheader("주차별 보스 클리어 상태 입력 (O=클리어, X=미클리어)")
 weeks = list(range(0,14))
 data = []
 # 2025년 6월 17일 기준
@@ -46,11 +43,11 @@ for w in weeks:
         end = start + timedelta(days=6)
     cols = st.columns(len(BOSS_TABLE) + 2)
     cols[0].write(f"{w}주차 {start.strftime('%m.%d')}~{end.strftime('%m.%d')}")
-    row = {"week": w}
+    row = {"week": w, "start": start}
     for idx, boss in enumerate(BOSS_TABLE, start=2):
         choice = cols[idx].selectbox(
             boss,
-            options=["X","ㅁ","O"], key=f"{boss}_{w}"
+            options=["X","O"], key=f"{boss}_{w}"
         )
         row[boss] = choice
     data.append(row)
@@ -62,8 +59,13 @@ results = []
 acc_trace = init_trace
 for _, row in df.iterrows():
     w = row.week
+    kill_date = row.start
     # 보스 흔적 합계
-    boss_sum = sum(BOSS_TABLE[boss] * mult_map[row[boss]] for boss in BOSS_TABLE)
+    boss_sum = 0
+    for boss, base in BOSS_TABLE.items():
+        if row[boss] == "O":
+            mult = 3 if kill_date >= purchase_date else 1
+            boss_sum += base * mult
     # 해방퀘스트 소모량
     drain = QUEST_DRAIN.get(w, 0)
     # 순 증가량
