@@ -146,29 +146,32 @@ st.markdown(
 # 12) 주차별 보스 상태 입력
 # ----------------------------
 st.subheader("주차별 보스 클리어 상태 입력")
-weeks = range(14)
 state_options = [
     "X","솔격","2인격","3인격","4인격","5인격",
     "예정 (솔격)","예정 (2인격)","예정 (3인격)",
     "예정 (4인격)","예정 (5인격)","예정 (6인격)"
 ]
+weeks = range(14)
+data = []
 
 for w in weeks:
-    # ① 주차 타이틀·해방퀘
-    title = week_title(w)
+    # 주차 타이틀 생성
+    start = base if w == 0 else base + timedelta(days=2 + 7*(w-1))
+    end   = start + timedelta(days=1 if w == 0 else 6)
     drain = QUEST_DRAIN.get(w, 0)
+    title = f"{w}주차 {start:%m.%d}~{end:%m.%d} (해방퀘 -{drain})"
 
-    # ② 배경색 분기
+    # 배경색 분기
     if w < curr_week:
-        bg = "#ffe5e5"
+        bg = "#ffe5e5"    # 지난 주차
     elif w == curr_week:
-        bg = "#e5ffe5"
+        bg = "#e5ffe5"    # 현재 주차
     elif w <= max(QUEST_DRAIN.keys()):
-        bg = "#fff0e5"
+        bg = "#fff0e5"    # 차주~해방 전
     else:
         bg = "transparent"
 
-    # ③ 스타일된 주차 박스
+    # 스타일된 박스 출력
     st.markdown(
         f"""
         <div style="
@@ -184,9 +187,10 @@ for w in weeks:
         unsafe_allow_html=True
     )
 
-    # ④ 보스별 selectbox 생성 (이 부분도 for w 안으로 반드시 포함)
+    # 보스별 selectbox
     cols = st.columns(len(BOSS_TABLE))
     defaults = DEFAULT_SHEET2[w] if sheet.startswith("시트2") else {}
+    row = {"week": w}
     for idx, boss in enumerate(BOSS_TABLE):
         init_st = defaults.get(boss, default_state(sheet))
         choice = cols[idx].selectbox(
@@ -196,7 +200,69 @@ for w in weeks:
             key=f"{user}_{sheet}_{boss}_{w}",
             disabled=not editable
         )
+        row[boss] = choice
+    data.append(row)
 
+# 입력 데이터프레임 생성
+df = pd.DataFrame(data)
+
+# ----------------------------
+# 13) 계산 및 결과 표시
+# ----------------------------
+if calc:
+    total_actual = 0
+    total_expected = 0
+    acc = init_trace
+    rows = []
+
+    for _, r in df.iterrows():
+        w = r.week
+        week_act = 0
+        week_exp = 0
+
+        # 보스별 actual / expected 합산
+        for boss, base_val in BOSS_TABLE.items():
+            state = r[boss]
+            # actual: 예정 제외
+            if state != "X" and not state.startswith("예정"):
+                cnt = 1 if state == "솔격" else int(state.replace("인격",""))
+                week_act += base_val * cnt
+            # expected: 예정 포함
+            if state != "X":
+                cnt = 1 if "솔격" in state else int(state.replace("인격","").replace("예정 (",""))
+                week_exp += base_val * cnt
+
+        drain = QUEST_DRAIN.get(w, 0)
+        delta_act = week_act - drain
+        delta_exp = week_exp - drain
+
+        total_actual += delta_act
+        total_expected += delta_exp
+        acc += delta_act
+
+        rows.append({
+            "주차": f"{w}주차",
+            "실제증가": delta_act,
+            "예상증가": delta_exp,
+            "누적흔적": acc
+        })
+
+    # 상단 메트릭 업데이트
+    final_act = init_trace + total_actual
+    final_exp = init_trace + total_expected
+    lack = max(0, 6600 - final_exp)
+    need_jin = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack > 0 else 0
+
+    actual_ph.metric("실제 해방흔적 증가", total_actual)
+    expected_ph.metric("예상 해방흔적 증가", total_expected)
+
+    st.markdown(f"**현재 누적 (실제): {final_act}  |  예상 누적: {final_exp}**")
+    st.markdown(f"**부족 흔적량 (예상 기준): {lack}  |  추가 진힐라 필요 횟수: {need_jin}**")
+
+    # 상세 결과 테이블
+    st.subheader("계산 결과 상세")
+    res_df = pd.DataFrame(rows).set_index("주차")
+    st.dataframe(res_df)
 # ----------------------------
 # 13) 계산 및 결과
 # ----------------------------
