@@ -119,23 +119,23 @@ weeks = range(14)
 data = []
 
 for w in weeks:
-    # 주차 타이틀 및 날짜 계산
+    # --- 주차별 날짜 및 해방퀘 ---
     start = base if w == 0 else base + timedelta(days=2 + 7*(w-1))
     end   = start + timedelta(days=1 if w == 0 else 6)
     drain = QUEST_DRAIN.get(w, 0)
     title = f"{w}주차 {start:%m.%d}~{end:%m.%d} (해방퀘 -{drain})"
 
-    # 배경색 분기
+    # --- 배경색 분기 ---
     if w < curr_week:
-        bg = "#ffe5e5"    # 지난 주차
+        bg = "#ffe5e5"
     elif w == curr_week:
-        bg = "#e5ffe5"    # 현재 주차
+        bg = "#e5ffe5"
     elif w <= max(QUEST_DRAIN.keys()):
-        bg = "#fff0e5"    # 차주~해방 전
+        bg = "#fff0e5"
     else:
         bg = "transparent"
 
-    # 스타일된 박스 출력
+    # --- 스타일 박스 ---
     st.markdown(
         f"""
         <div style="
@@ -151,7 +151,7 @@ for w in weeks:
         unsafe_allow_html=True
     )
 
-    # 보스별 selectbox 생성
+    # --- 보스별 선택 ---
     cols = st.columns(len(BOSS_TABLE))
     defaults = DEFAULT_SHEET2[w] if sheet.startswith("시트2") else {}
     row = {"week": w}
@@ -167,7 +167,7 @@ for w in weeks:
         row[boss] = choice
     data.append(row)
 
-# 입력 데이터프레임 생성
+# --- 입력 데이터프레임 생성 ---
 df = pd.DataFrame(data)
 
 # ----------------------------
@@ -184,16 +184,15 @@ if calc:
         week_act = 0
         week_exp = 0
 
-        # 보스별 actual/expected 합산
         for boss, base_val in BOSS_TABLE.items():
             state = r[boss]
-            # actual: 예정 제외
+            # actual 합산 (예정 제외)
             if state != "X" and not state.startswith("예정"):
                 cnt = 1 if state == "솔격" else int(state.replace("인격", ""))
                 week_act += base_val * cnt
-            # expected: 예정 포함
+            # expected 합산 (예정 포함)
             if state != "X":
-                cnt = 1 if "솔격" in state else int(state.replace("인격", "").replace("예정 (", ""))
+                cnt = 1 if "솔격" in state else int(state.replace("예정 (", "").replace("인격",""))
                 week_exp += base_val * cnt
 
         drain = QUEST_DRAIN.get(w, 0)
@@ -211,7 +210,7 @@ if calc:
             "누적흔적": acc
         })
 
-    # 상단 메트릭 업데이트
+    # 상단 메트릭
     final_act = init_trace + total_actual
     final_exp = init_trace + total_expected
     lack = max(0, 6600 - final_exp)
