@@ -1,3 +1,30 @@
+import streamlit as st
+import pandas as pd
+import math
+import json
+import os
+from datetime import date, timedelta, datetime
+
+# ----------------------------
+# 페이지 설정 (반드시 이 위치)
+# ----------------------------
+st.set_page_config(page_title="메이플스토리 흔적 계산기", layout="wide")
+
+# ----------------------------
+# 0) 사용자 & 시트 설정
+# ----------------------------
+VALID_USERS = {
+    "admin":"admin",
+    "플라잉리슝쫙":"플라잉리슝쫙",
+    "모든세상의악":"모든세상의악",
+    "자하레노":"자하레노",
+    "정실렌엔젤":"정실렌엔젤",
+    "큐레어루제네":"큐레어루제네"
+}
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+
 # ----------------------------
 # 1) 사용자 & 시트 설정
 # ----------------------------
