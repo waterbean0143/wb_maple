@@ -87,60 +87,146 @@ st.set_page_config(page_title=sheet_name, layout="wide")
 st.title(f"{sheet_name} — {user}님")
 
 # ----------------------------
-# 7) 사용자 입력
-# ----------------------------
-editable = (user=="admin" or sheet==user)
-col1, col2 = st.columns(2)
-with col1:
-    init_trace = st.number_input("기록시점-현재흔적", min_value=0, value=0, disabled=not editable)
-with col2:
-    purchase_date = st.date_input("제네시스 패스 구매일자", value=date(2025,6,17), disabled=not editable)
-
-# ----------------------------
-# 8) 현재 주차 & 다음 해방 예정
-# ----------------------------
-today = datetime.now().date()
-base = date(2025,6,17)
-delta_days = (today - base).days
-if delta_days < 2:
-    curr_week = 0
-else:
-    curr_week = min(13, (delta_days-2)//7 + 1)
-
-# 주차별 title 계산 함수
-def week_title(w):
-    start = base if w==0 else base+timedelta(days=2+7*(w-1))
-    end   = start + timedelta(days=1 if w==0 else 6)
-    drain = QUEST_DRAIN.get(w,0)
-    return f"{w}주차 {start:%m.%d}~{end:%m.%d} (해방퀘 -{drain})"
-
-# 현재 주차를 동일 포맷으로 표시
-st.markdown(f"**현재 주차: {week_title(curr_week)}**")
-
-next_ws = [w for w in QUEST_DRAIN if w>curr_week]
-if next_ws:
-    nw = min(next_ws)
-    st.markdown(f"**다음 해방퀘: {week_title(nw)}**")
-
-# ----------------------------
-# 9) 실제/예상 메트릭 자리
+# 7) 실제/예상 흔적 메트릭 자리
 # ----------------------------
 m1, m2 = st.columns(2)
-ph_actual = m1.empty()
-ph_expected = m2.empty()
+actual_ph = m1.empty()
+expected_ph = m2.empty()
 
 # ----------------------------
-# 10) 계산 버튼
+# 8) 계산 버튼
 # ----------------------------
-calc = st.button("계산하기", disabled=not editable)
+calc = st.button("계산하기")
 
 # ----------------------------
-# 11) CSS 스타일
+# 9) CSS 스타일 (주차 박스 테두리)
 # ----------------------------
 st.markdown(
     "<style>.week-box{border:1px solid #ccc;padding:8px;margin:6px 0;border-radius:4px;}</style>",
     unsafe_allow_html=True
 )
+
+# ----------------------------
+# 10) 주차별 보스 상태 입력
+# ----------------------------
+st.subheader("주차별 보스 클리어 상태 입력")
+state_options = [
+    "X", "솔격", "2인격", "3인격", "4인격", "5인격",
+    "예정 (솔격)", "예정 (2인격)", "예정 (3인격)",
+    "예정 (4인격)", "예정 (5인격)", "예정 (6인격)"
+]
+weeks = range(14)
+data = []
+
+for w in weeks:
+    # 주차 타이틀 및 날짜 계산
+    start = base if w == 0 else base + timedelta(days=2 + 7*(w-1))
+    end   = start + timedelta(days=1 if w == 0 else 6)
+    drain = QUEST_DRAIN.get(w, 0)
+    title = f"{w}주차 {start:%m.%d}~{end:%m.%d} (해방퀘 -{drain})"
+
+    # 배경색 분기
+    if w < curr_week:
+        bg = "#ffe5e5"    # 지난 주차
+    elif w == curr_week:
+        bg = "#e5ffe5"    # 현재 주차
+    elif w <= max(QUEST_DRAIN.keys()):
+        bg = "#fff0e5"    # 차주~해방 전
+    else:
+        bg = "transparent"
+
+    # 스타일된 박스 출력
+    st.markdown(
+        f"""
+        <div style="
+            background-color: {bg};
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin: 6px 0;
+            border-radius: 4px;
+        ">
+            <strong>{title}</strong>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # 보스별 selectbox 생성
+    cols = st.columns(len(BOSS_TABLE))
+    defaults = DEFAULT_SHEET2[w] if sheet.startswith("시트2") else {}
+    row = {"week": w}
+    for idx, boss in enumerate(BOSS_TABLE):
+        init_st = defaults.get(boss, default_state(sheet))
+        choice = cols[idx].selectbox(
+            boss,
+            options=state_options,
+            index=state_options.index(init_st),
+            key=f"{user}_{sheet}_{boss}_{w}",
+            disabled=not editable
+        )
+        row[boss] = choice
+    data.append(row)
+
+# 입력 데이터프레임 생성
+df = pd.DataFrame(data)
+
+# ----------------------------
+# 11) 계산 및 결과 표시
+# ----------------------------
+if calc:
+    total_actual = 0
+    total_expected = 0
+    acc = init_trace
+    rows = []
+
+    for _, r in df.iterrows():
+        w = r.week
+        week_act = 0
+        week_exp = 0
+
+        # 보스별 actual/expected 합산
+        for boss, base_val in BOSS_TABLE.items():
+            state = r[boss]
+            # actual: 예정 제외
+            if state != "X" and not state.startswith("예정"):
+                cnt = 1 if state == "솔격" else int(state.replace("인격", ""))
+                week_act += base_val * cnt
+            # expected: 예정 포함
+            if state != "X":
+                cnt = 1 if "솔격" in state else int(state.replace("인격", "").replace("예정 (", ""))
+                week_exp += base_val * cnt
+
+        drain = QUEST_DRAIN.get(w, 0)
+        delta_act = week_act - drain
+        delta_exp = week_exp - drain
+
+        total_actual += delta_act
+        total_expected += delta_exp
+        acc += delta_act
+
+        rows.append({
+            "주차": f"{w}주차",
+            "실제증가": delta_act,
+            "예상증가": delta_exp,
+            "누적흔적": acc
+        })
+
+    # 상단 메트릭 업데이트
+    final_act = init_trace + total_actual
+    final_exp = init_trace + total_expected
+    lack = max(0, 6600 - final_exp)
+    need_jin = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack > 0 else 0
+
+    actual_ph.metric("실제 해방흔적 증가", total_actual)
+    expected_ph.metric("예상 해방흔적 증가", total_expected)
+
+    st.markdown(f"**현재 누적 (실제): {final_act}  |  예상 누적: {final_exp}**")
+    st.markdown(f"**부족 흔적량 (예상 기준): {lack}  |  추가 진힐라 필요 횟수: {need_jin}**")
+
+    # 상세 결과 테이블
+    st.subheader("계산 결과 상세")
+    res_df = pd.DataFrame(rows).set_index("주차")
+    st.dataframe(res_df)
 
 # ----------------------------
 # 12) 주차별 보스 상태 입력
