@@ -25,7 +25,7 @@ auth = stauth.Authenticate(
 )
 
 # --- 사용자 인증 로그인 ---
-username, auth_status = auth.login("로그인")
+username, auth_status = auth.login(name="로그인", key="login", location="main")
 if not auth_status:
     st.stop()
 
