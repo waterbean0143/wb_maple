@@ -7,16 +7,18 @@ from datetime import date, timedelta, datetime
 # ----------------------------
 # 1) 사용자 인증 설정
 # ----------------------------
-users = {
-    "플라잉리슝쫙": {"name":"플라잉리슝쫙","password":"플라잉리슝쫙"},
-    "모든세상의악": {"name":"모든세상의악","password":"모든세상의악"},
-    "자하레노":     {"name":"자하레노","password":"자하레노"},
-    "정실렌엔젤":   {"name":"정실렌엔젤","password":"정실렌엔젤"},
-    "큐레어루제네": {"name":"큐레어루제네","password":"큐레어루제네"},
+credentials = {
+    "usernames": {
+        "플라잉리슝쫙": {"name": "플라잉리슝쫙", "password": "플라잉리슝쫙"},
+        "모든세상의악": {"name": "모든세상의악", "password": "모든세상의악"},
+        "자하레노":     {"name": "자하레노",     "password": "자하레노"},
+        "정실렌엔젤":   {"name": "정실렌엔젤",   "password": "정실렌엔젤"},
+        "큐레어루제네": {"name": "큐레어루제네", "password": "큐레어루제네"},
+    }
 }
 
 auth = stauth.Authenticate(
-    credentials=users,
+    credentials,
     cookie_name="maple_trace_cookie",
     key="some_signature_key",
     cookie_expiry_days=30
@@ -36,13 +38,11 @@ BOSS_TABLE = {
     "노말-진힐라": 135, "검은 마법사": 600
 }
 
+
 # ----------------------------
 # 3) 시트2 기본값: 12주 해방 루트 모두 '솔격'
 # ----------------------------
-DEFAULT_SHEET2 = []
-# 0주차~13주차: 전부 '솔격'
-for w in range(14):
-    DEFAULT_SHEET2.append({b:"솔격" for b in BOSS_TABLE})
+DEFAULT_SHEET2 = [{b: "솔격" for b in BOSS_TABLE} for _ in range(14)]
 
 # ----------------------------
 # 4) 사이드바 설정
@@ -77,7 +77,7 @@ with col2:
     purchase_date = st.date_input("제네시스 패스 구매일자", value=date(2025,6,17))
 
 # ----------------------------
-# 7) 현재 및 예상 흔적 메트릭 자리 확보
+# 7) 실제/예상 흔적 메트릭 자리
 # ----------------------------
 m1, m2 = st.columns(2)
 actual_ph = m1.empty()
@@ -89,17 +89,14 @@ expected_ph = m2.empty()
 today = datetime.now().date()
 base = date(2025,6,17)
 delta_days = (today - base).days
-if delta_days < 2:
-    curr_week = 0
-else:
-    curr_week = min(13, (delta_days-2)//7 + 1)
+curr_week = 0 if delta_days < 2 else min(13, (delta_days-2)//7 + 1)
 st.markdown(f"**현재 주차: {curr_week}주차**")
 
-next_ws = [w for w in QUEST_DRAIN if w>curr_week]
-if next_ws:
-    nw = min(next_ws)
-    ns = base if nw==0 else base + timedelta(days=2 + 7*(nw-1))
-    ne = ns + timedelta(days=1 if nw==0 else 6)
+next_weeks = [w for w in QUEST_DRAIN if w > curr_week]
+if next_weeks:
+    nw = min(next_weeks)
+    ns = base if nw == 0 else base + timedelta(days=2 + 7*(nw-1))
+    ne = ns + timedelta(days=1 if nw == 0 else 6)
     st.markdown(f"**다음 해방퀘: {nw}주차 ({ns:%m.%d}~{ne:%m.%d}) — -{QUEST_DRAIN[nw]}**")
 
 # ----------------------------
@@ -128,16 +125,16 @@ weeks = list(range(14))
 data = []
 
 for w in weeks:
-    s = base if w==0 else base + timedelta(days=2+7*(w-1))
-    e = s + timedelta(days=1 if w==0 else 6)
-    drain = QUEST_DRAIN.get(w,0)
+    s = base if w == 0 else base + timedelta(days=2 + 7*(w-1))
+    e = s + timedelta(days=1 if w == 0 else 6)
+    drain = QUEST_DRAIN.get(w, 0)
     st.markdown(
         f"<div class='week-box'><strong>{w}주차 {s:%m.%d}~{e:%m.%d} (해방퀘 -{drain})</strong></div>",
         unsafe_allow_html=True
     )
     cols = st.columns(len(BOSS_TABLE))
-    row = {"week":w}
-    defaults = DEFAULT_SHEET2[w] if sheet_template=="시트2: 12주 해방" else {}
+    row = {"week": w}
+    defaults = DEFAULT_SHEET2[w] if sheet_template == "시트2: 12주 해방" else {}
     for idx, boss in enumerate(BOSS_TABLE):
         init_st = defaults.get(boss, default_state(sheet_template))
         choice = cols[idx].selectbox(
@@ -160,22 +157,19 @@ if calc:
     acc = init_trace
     rows = []
 
-    # 주차별 actual/expected 합 계산
     for _, r in df.iterrows():
-        w, rdate = r.week, r.get("date", None)
+        w = r.week
         week_actual = 0
         week_expected = 0
         for b, base_v in BOSS_TABLE.items():
             stt = r[b]
-            # actual: 예정 제외
-            if not stt.startswith("예정") and stt!="X":
-                cnt = 1 if stt=="솔격" else int(stt.replace("인격",""))
+            if not stt.startswith("예정") and stt != "X":
+                cnt = 1 if stt == "솔격" else int(stt.replace("인격",""))
                 week_actual += base_v * cnt
-            # expected: 예정 포함
-            if stt!="X":
+            if stt != "X":
                 cnt = 1 if "솔격" in stt else int(stt.replace("인격","").replace("예정 (",""))
                 week_expected += base_v * cnt
-        drain = QUEST_DRAIN.get(w,0)
+        drain = QUEST_DRAIN.get(w, 0)
         delta_actual = week_actual - drain
         delta_expected = week_expected - drain
         total_actual += delta_actual
@@ -183,27 +177,22 @@ if calc:
         acc += delta_actual
         rows.append({
             "주차": f"{w}주차", "실제합계": week_actual,
-            "예상합계": week_expected,
-            "소모량": drain,
-            "실제증가": delta_actual,
-            "예상증가": delta_expected,
+            "예상합계": week_expected, "소모량": drain,
+            "실제증가": delta_actual, "예상증가": delta_expected,
             "누적흔적": acc
         })
 
-    # 상단 메트릭
-    actual_ph.metric("실제 해방흔적 증가", total_actual)
-    expected_ph.metric("예상 해방흔적 증가", total_expected)
-
-    # 부족량 & 추가 진힐라
     final_actual = init_trace + total_actual
     final_expected = init_trace + total_expected
     lack = max(0, 6600 - final_expected)
-    need = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack>0 else 0
+    need = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack > 0 else 0
 
-    st.markdown(f"**현재 누적 흔적(실제): {final_actual}  |  예상 누적 흔적: {final_expected}**")
+    actual_ph.metric("실제 해방흔적 증가", total_actual)
+    expected_ph.metric("예상 해방흔적 증가", total_expected)
+
+    st.markdown(f"**현재 누적 (실제): {final_actual}  |  예상 누적: {final_expected}**")
     st.markdown(f"**부족 흔적량 (예상 기준): {lack}  |  추가 진힐라 필요 횟수: {need}**")
 
-    # 결과 테이블
     res_df = pd.DataFrame(rows).set_index("주차")
     st.subheader("계산 결과 상세")
     st.dataframe(res_df)
