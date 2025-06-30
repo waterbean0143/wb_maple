@@ -24,7 +24,8 @@ auth = stauth.Authenticate(
     cookie_expiry_days=30
 )
 
-username, auth_status = auth.login("로그인", "main")
+# --- 사용자 인증 로그인 ---
+username, auth_status = auth.login("로그인", location="main")
 if not auth_status:
     st.stop()
 
