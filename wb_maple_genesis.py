@@ -10,6 +10,26 @@ from datetime import date, timedelta, datetime
 # ----------------------------
 st.set_page_config(page_title="메이플스토리 흔적 계산기", layout="wide")
 
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+def save_user_log(user, data):
+    path = os.path.join(LOG_DIR, f"{user}.json")
+    entry = {"timestamp": datetime.now().isoformat(), "data": data}
+    if os.path.exists(path):
+        logs = json.load(open(path, "r", encoding="utf-8"))
+    else:
+        logs = []
+    logs.append(entry)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(logs, f, ensure_ascii=False, indent=2)
+
+def load_user_log(user):
+    path = os.path.join(LOG_DIR, f"{user}.json")
+    if not os.path.exists(path):
+        return []
+    return json.load(open(path, "r", encoding="utf-8"))
+
 # ----------------------------
 # 0) 사용자 & 시트 설정
 # ----------------------------
