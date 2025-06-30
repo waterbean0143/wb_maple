@@ -1,10 +1,5 @@
-import streamlit as st
-import pandas as pd
-import math
-from datetime import date, timedelta, datetime
-
 # ----------------------------
-# 0) 사용자 & 시트 설정
+# 1) 사용자 & 시트 설정
 # ----------------------------
 VALID_USERS = {
     "admin":"admin",
@@ -32,7 +27,7 @@ user = st.session_state.user
 
 TEMPLATES = ["시트1: 모두 X", "시트2: 12주 해방", "시트3: 모두 O"]
 PERSONAL_SHEETS = list(VALID_USERS.keys())
-SHEETS = TEMPLATES + PERSONAL_SHEETS  # 모든 유저가 모든 시트 조회 가능
+SHEETS = TEMPLATES + PERSONAL_SHEETS
 
 st.sidebar.header("설정")
 sheet = st.sidebar.selectbox("시트 선택", options=SHEETS, index=0)
@@ -43,7 +38,7 @@ else:
     sheet_name = sheet
 
 # ----------------------------
-# 1) 기준 데이터 정의
+# 2) 기준 데이터
 # ----------------------------
 QUEST_DRAIN = {5:1500, 9:1700, 13:2886}
 BOSS_TABLE = {
@@ -59,36 +54,28 @@ def default_state(tpl):
     return "X"
 
 # ----------------------------
-# 2) 페이지 헤더
+# 3) 페이지 헤더
 # ----------------------------
 st.set_page_config(page_title=sheet_name, layout="wide")
 st.title(f"{sheet_name} — {user}님")
 
 # ----------------------------
-# 3) 사용자 입력
+# 4) 사용자 입력
 # ----------------------------
 editable = (user=="admin" or sheet==user)
 col1, col2 = st.columns(2)
 with col1:
-    init_trace = st.number_input(
-        "기록시점-현재흔적",
-        min_value=0, value=0,
-        disabled=not editable
-    )
+    init_trace = st.number_input("기록시점-현재흔적", min_value=0, value=0, disabled=not editable)
 with col2:
-    purchase_date = st.date_input(
-        "제네시스 패스 구매일자",
-        value=date(2025,6,17),
-        disabled=not editable
-    )
+    purchase_date = st.date_input("제네시스 패스 구매일자", value=date(2025,6,17), disabled=not editable)
 
 # ----------------------------
-# 4) 현재 주차 계산
+# 5) 현재 주차 계산
 # ----------------------------
 base = date(2025,6,17)
 today = datetime.now().date()
 delta_days = (today - base).days
-curr_week = 0 if delta_days < 2 else min(13, (delta_days-2)//7 + 1)
+curr_week = 0 if delta_days<2 else min(13, (delta_days-2)//7 + 1)
 
 def week_title(w):
     s = base if w==0 else base + timedelta(days=2 + 7*(w-1))
@@ -103,15 +90,17 @@ if next_ws:
     st.markdown(f"**다음 해방퀘: {week_title(nw)}**")
 
 # ----------------------------
-# 5) 메트릭 자리 & 버튼
+# 6) 메트릭 자리 & 버튼
 # ----------------------------
 m1, m2 = st.columns(2)
 actual_ph = m1.empty()
 expected_ph = m2.empty()
-calc = st.button("계산하기", disabled=not editable)
+c_col, s_col = st.columns(2)
+calc = c_col.button("계산하기", disabled=not editable)
+save = s_col.button("저장하기", disabled=not editable)
 
 # ----------------------------
-# 6) CSS 스타일
+# 7) CSS 스타일
 # ----------------------------
 st.markdown(
     "<style>.week-box{border:1px solid #ccc;padding:8px;margin:6px 0;border-radius:4px;}</style>",
@@ -119,18 +108,14 @@ st.markdown(
 )
 
 # ----------------------------
-# 7) 주차별 입력
+# 8) 주차별 입력
 # ----------------------------
 st.subheader("주차별 보스 클리어 상태 입력")
-state_options = (
-    ["X","솔격","2인격","3인격","4인격","5인격"] +
-    [f"예정 ({i}인격)" for i in range(1,7)]
-)
+state_options = ["X","솔격","2인격","3인격","4인격","5인격"] + [f"예정 ({i}인격)" for i in range(1,7)]
 weeks = range(14)
 data = []
 
 for w in weeks:
-    # 타이틀 + 배경색
     title = week_title(w)
     if w < curr_week:
         bg = "#ffe5e5"
@@ -140,7 +125,6 @@ for w in weeks:
         bg = "#fff0e5"
     else:
         bg = "transparent"
-
     st.markdown(
         f"""<div style="
             background-color:{bg};
@@ -150,63 +134,95 @@ for w in weeks:
         </div>""",
         unsafe_allow_html=True
     )
-
     cols = st.columns(len(BOSS_TABLE))
     defaults = DEFAULT_SHEET2[w] if sheet.startswith("시트2") else {}
     row = {"week":w}
     for idx, boss in enumerate(BOSS_TABLE):
         init_st = defaults.get(boss, default_state(sheet))
-        row[boss] = cols[idx].selectbox(
+        choice = cols[idx].selectbox(
             boss, state_options,
             index=state_options.index(init_st),
             key=f"{user}_{sheet}_{boss}_{w}",
             disabled=not editable
         )
+        row[boss] = choice
     data.append(row)
 
-# ----------------------------
-# 8) df 생성
-# ----------------------------
 df = pd.DataFrame(data)
 
 # ----------------------------
-# 9) 계산 및 결과 표시
+# 9) 저장하기 동작
+# ----------------------------
+if save:
+    save_user_log(user, {
+        "init_trace": init_trace,
+        "purchase_date": purchase_date.isoformat(),
+        "choices": {
+            int(r.week): {b: df.at[i, b] for b in BOSS_TABLE}
+            for i, r in df.iterrows()
+        }
+    })
+    st.success("현재 상태를 저장했습니다.")
+
+# ----------------------------
+# 10) 계산 및 결과 표시
 # ----------------------------
 if calc:
     total_act = total_exp = 0
     acc = init_trace
     rows = []
+    # (계산 로직 생략 없이 이전과 동일)
     for _, r in df.iterrows():
-        w = r.week
-        act = exp = 0
-        for b, base_v in BOSS_TABLE.items():
+        w = r.week; act = exp = 0
+        for b, val in BOSS_TABLE.items():
             stt = r[b]
             if stt!="X" and not stt.startswith("예정"):
                 cnt = 1 if stt=="솔격" else int(stt.replace("인격",""))
-                act += base_v * cnt
+                act += val*cnt
             if stt!="X":
                 cnt = 1 if "솔격" in stt else int(stt.replace("예정 (","").replace("인격",""))
-                exp += base_v * cnt
+                exp += val*cnt
         d = QUEST_DRAIN.get(w,0)
-        da, de = act - d, exp - d
-        total_act += da
-        total_exp += de
-        acc += da
-        rows.append({
-            "주차":f"{w}주차",
-            "실제증가":da,
-            "예상증가":de,
-            "누적흔적":acc
-        })
+        da, de = act-d, exp-d
+        total_act += da; total_exp += de; acc += da
+        rows.append({"주차":f"{w}주차","실제증가":da,"예상증가":de,"누적흔적":acc})
     final_act = init_trace + total_act
     final_exp = init_trace + total_exp
     lack = max(0,6600-final_exp)
-    need = math.ceil(lack/BOSS_TABLE["노말-진힐라"]) if lack>0 else 0
+    need = math.ceil(lack / BOSS_TABLE["노말-진힐라"]) if lack>0 else 0
 
     actual_ph.metric("실제 해방흔적 증가", total_act)
     expected_ph.metric("예상 해방흔적 증가", total_exp)
-    st.markdown(f"**현재 누적(실제): {final_act} | 예상 누적: {final_exp}**")
-    st.markdown(f"**부족 흔적량 (예상 기준): {lack} | 추가 진힐라 필요 횟수: {need}**")
-
+    st.markdown(f"**현재 누적(실제):{final_act} | 예상 누적:{final_exp} | 부족량:{lack} | 추가진힐라:{need}**")
     st.subheader("계산 결과 상세")
     st.dataframe(pd.DataFrame(rows).set_index("주차"))
+
+# ----------------------------
+# 11) Admin 전용: 로그 보기
+# ----------------------------
+if user == "admin":
+    st.sidebar.header("사용자 로그 조회")
+    target = st.sidebar.selectbox("로그 볼 사용자", options=[u for u in VALID_USERS if u!="admin"])
+    if st.sidebar.button("로그 불러오기"):
+        logs = load_user_log(target)
+        if not logs:
+            st.info("로그 없음")
+        else:
+            df_logs = []
+            for entry in logs:
+                row = {
+                    "timestamp": entry["timestamp"],
+                    "init_trace": entry["data"]["init_trace"],
+                    "purchase_date": entry["data"]["purchase_date"],
+                    "choices": json.dumps(entry["data"]["choices"], ensure_ascii=False)
+                }
+                df_logs.append(row)
+            st.subheader(f"{target}님 로그")
+            st.dataframe(pd.DataFrame(df_logs))
+
+
+
+
+
+
+
