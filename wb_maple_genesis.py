@@ -146,29 +146,41 @@ st.markdown(
 # 12) 주차별 보스 상태 입력
 # ----------------------------
 st.subheader("주차별 보스 클리어 상태 입력")
-state_options = [
-    "X","솔격","2인격","3인격","4인격","5인격",
-    "예정 (솔격)","예정 (2인격)","예정 (3인격)",
-    "예정 (4인격)","예정 (5인격)","예정 (6인격)"
-]
-weeks = range(14)
-data = []
 for w in weeks:
-    title = week_title(w)
-    st.markdown(f"<div class='week-box'><strong>{title}</strong></div>", unsafe_allow_html=True)
+    # ① 각 주차 타이틀 생성
+    title = week_title(w)    # ex: "2주차 06.26~07.02 (해방퀘 -0)"
+    drain = QUEST_DRAIN.get(w, 0)
+
+    # ② 배경색 분기
+    if w < curr_week:
+        bg = "#ffe5e5"    # 지난 주차: 연한 빨강
+    elif w == curr_week:
+        bg = "#e5ffe5"    # 현재 주차: 연한 초록
+    elif w <= max(QUEST_DRAIN.keys()):
+        bg = "#fff0e5"    # 차주~해방 전: 연한 주황
+    else:
+        bg = "transparent"
+
+    # ③ 스타일된 박스 렌더링
+    st.markdown(
+        f"""
+        <div style="
+            background-color: {bg};
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin: 6px 0;
+            border-radius: 4px;
+        ">
+            <strong>{title}</strong>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ④ 보스별 selectbox 생성
     cols = st.columns(len(BOSS_TABLE))
-    row = {"week":w}
-    defaults = DEFAULT_SHEET2[w] if sheet.startswith("시트2") else {}
-    for i,boss in enumerate(BOSS_TABLE):
-        init_st = defaults.get(boss, default_state(sheet))
-        choice = cols[i].selectbox(
-            boss, state_options, index=state_options.index(init_st),
-            key=f"{user}_{sheet}_{boss}_{w}",
-            disabled=not editable
-        )
-        row[boss] = choice
-    data.append(row)
-df = pd.DataFrame(data)
+    for idx, boss in enumerate(BOSS_TABLE):
+        # ... (이전 코드와 동일하게 selectbox)
 
 # ----------------------------
 # 13) 계산 및 결과
